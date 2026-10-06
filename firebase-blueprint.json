@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with academic details, library card number, and consultant profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 2000000 },
+        "role": { "type": "string", "enum": ["user", "consultant", "admin", "super_admin"] },
+        "institution": { "type": "string", "maxLength": 200 },
+        "educationLevel": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "libraryCardNumber": { "type": "string", "maxLength": 100 },
+        "studyProgram": { "type": "string", "maxLength": 150 },
+        "isProfileComplete": { "type": "boolean" },
+        "consultantExpertise": { "type": "string", "maxLength": 500 },
+        "consultantBio": { "type": "string", "maxLength": 2000 },
+        "consultantSchedule": { "type": "string", "maxLength": 200 },
+        "consultantNip": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 60 },
+        "updatedAt": { "type": "string", "maxLength": 60 }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "AiSession": {
+      "title": "AiSession",
+      "description": "AI Academic consultation session metadata",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "stageId": { "type": "string", "maxLength": 20 },
+        "stageName": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "stageId", "stageName", "title"]
+    },
+    "AiMessage": {
+      "title": "AiMessage",
+      "description": "Message inside an AI consultation session",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string", "maxLength": 50000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["role", "content"]
+    },
+    "Consultation": {
+      "title": "Consultation",
+      "description": "Human consultant inquiry and response record with preferred consultants and admin assignment",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 150 },
+        "userEmail": { "type": "string", "maxLength": 200 },
+        "userPhone": { "type": "string", "maxLength": 50 },
+        "userLibraryCard": { "type": "string", "maxLength": 100 },
+        "consultantId": { "type": "string", "maxLength": 128 },
+        "consultantName": { "type": "string", "maxLength": 150 },
+        "preferredConsultantIds": { "type": "array" },
+        "preferredConsultantNames": { "type": "array" },
+        "consultationMode": { "type": "string", "enum": ["offline", "online"] },
+        "assignedByAdminId": { "type": "string", "maxLength": 128 },
+        "assignedByAdminName": { "type": "string", "maxLength": 150 },
+        "subject": { "type": "string", "maxLength": 200 },
+        "stageId": { "type": "string", "maxLength": 50 },
+        "stageName": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 10000 },
+        "response": { "type": "string", "maxLength": 20000 },
+        "status": { "type": "string", "enum": ["waiting", "assigned", "answered", "closed"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "subject", "stageId", "message", "status"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "System settings such as Google Sheets webhook URL",
+      "type": "object",
+      "properties": {
+        "googleSheetWebhookUrl": { "type": "string", "maxLength": 1000 },
+        "googleSpreadsheetId": { "type": "string", "maxLength": 200 },
+        "zoomMeetingUrl": { "type": "string", "maxLength": 1000 },
+        "hotlinePhone": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string", "maxLength": 150 }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile collection with Dispusip Kepri library card and consultant profile"
+    },
+    "/aiSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/AiSession" },
+      "description": "Consultation sessions held with LAKONAN AI"
+    },
+    "/aiSessions/{sessionId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/AiMessage" },
+      "description": "Individual turns and messages within an AI consultation session"
+    },
+    "/consultations/{consultationId}": {
+      "schema": { "$ref": "#/entities/Consultation" },
+      "description": "Human academic consultations with multiple preferred consultants and admin coordination"
+    },
+    "/systemSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/SystemSetting" },
+      "description": "Global configuration including Google Sheets sync"
+    }
+  }
+}

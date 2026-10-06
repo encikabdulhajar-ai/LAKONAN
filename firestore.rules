@@ -1,0 +1,236 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'encikabdulhajar@gmail.com' && request.auth.token.email_verified == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
+      );
+    }
+
+    function isConsultant() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['consultant', 'admin', 'super_admin'])
+      );
+    }
+
+    // Validation for User entity
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.role in ['user', 'consultant', 'admin', 'super_admin'] &&
+             (!('institution' in data) || (data.institution is string && data.institution.size() <= 200)) &&
+             (!('educationLevel' in data) || (data.educationLevel is string && data.educationLevel.size() <= 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('libraryCardNumber' in data) || (data.libraryCardNumber is string && data.libraryCardNumber.size() <= 100)) &&
+             (!('studyProgram' in data) || (data.studyProgram is string && data.studyProgram.size() <= 150)) &&
+             (!('isProfileComplete' in data) || (data.isProfileComplete is bool)) &&
+             (!('consultantExpertise' in data) || (data.consultantExpertise is string && data.consultantExpertise.size() <= 500)) &&
+             (!('consultantBio' in data) || (data.consultantBio is string && data.consultantBio.size() <= 2000)) &&
+             (!('consultantSchedule' in data) || (data.consultantSchedule is string && data.consultantSchedule.size() <= 200)) &&
+             (!('consultantNip' in data) || (data.consultantNip is string && data.consultantNip.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000000));
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isConsultant());
+      // Authenticated users can list users if needed to see consultant list or admin lists
+      allow list: if isSignedIn();
+      
+      // On create:
+      // - Super Admin can add Admin, Konsultan, and Pengguna
+      // - Admin can add Pengguna and Konsultan
+      // - Standard user can self-register with role == 'user'
+      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
+        isSuperAdmin() ||
+        (isAdmin() && incoming().role in ['user', 'consultant']) ||
+        (request.auth.uid == userId && incoming().uid == request.auth.uid && incoming().role == 'user')
+      );
+
+      // On update:
+      // - Super Admin can edit Admin, Konsultan, and Pengguna
+      // - Admin can edit Pengguna and Konsultan (cannot edit Admin or Super Admin)
+      // - Regular user can edit own non-role fields
+      allow update: if isSignedIn() && (
+        isSuperAdmin() ||
+        (
+          isAdmin() &&
+          isValidUser(incoming()) &&
+          existing().role in ['user', 'consultant'] &&
+          incoming().role in ['user', 'consultant']
+        ) ||
+        (
+          request.auth.uid == userId &&
+          isValidUser(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          incoming().role == existing().role &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'institution', 'educationLevel', 'photoURL', 'phone',
+            'libraryCardNumber', 'studyProgram', 'isProfileComplete',
+            'consultantExpertise', 'consultantBio', 'consultantSchedule',
+            'consultantNip', 'updatedAt'
+          ])
+        )
+      );
+
+      // On delete:
+      // - Super Admin can delete Admin, Konsultan, and Pengguna (cannot delete root super admin)
+      // - Admin can delete Pengguna and Konsultan
+      allow delete: if isSignedIn() && existing().email != 'encikabdulhajar@gmail.com' && (
+        isSuperAdmin() ||
+        (isAdmin() && existing().role in ['user', 'consultant'])
+      );
+    }
+
+    // Validation for AiSession entity
+    function isValidAiSession(data) {
+      return data.keys().hasAll(['userId', 'stageId', 'stageName', 'title']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.stageId is string && data.stageId.size() <= 20 &&
+             data.stageName is string && data.stageName.size() <= 100 &&
+             data.title is string && data.title.size() <= 200;
+    }
+
+    // AI Sessions Collection
+    match /aiSessions/{sessionId} {
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid));
+
+      allow create: if isSignedIn() && isValidId(sessionId) &&
+        isValidAiSession(incoming()) &&
+        incoming().userId == request.auth.uid;
+
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          existing().userId == request.auth.uid &&
+          isValidAiSession(incoming()) &&
+          incoming().userId == existing().userId &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'stageId', 'stageName', 'updatedAt'])
+        )
+      );
+
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+
+      // Messages Subcollection
+      match /messages/{messageId} {
+        function parentSession() {
+          return get(/databases/$(database)/documents/aiSessions/$(sessionId)).data;
+        }
+
+        allow get, list: if isSignedIn() && (parentSession().userId == request.auth.uid || isAdmin());
+
+        allow create: if isSignedIn() && isValidId(messageId) &&
+          (parentSession().userId == request.auth.uid || isAdmin()) &&
+          incoming().role in ['user', 'assistant'] &&
+          incoming().content is string && incoming().content.size() <= 50000;
+
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Validation for Human Consultations
+    function isValidConsultation(data) {
+      return data.keys().hasAll(['userId', 'subject', 'stageId', 'message', 'status']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() <= 200 &&
+             data.stageId is string && data.stageId.size() <= 50 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 10000 &&
+             data.status in ['waiting', 'assigned', 'answered', 'closed'] &&
+             (!('response' in data) || (data.response is string && data.response.size() <= 20000));
+    }
+
+    // Human Consultations Collection
+    match /consultations/{consultationId} {
+      allow get: if isSignedIn() && (
+        existing().userId == request.auth.uid ||
+        existing().consultantId == request.auth.uid ||
+        isConsultant() ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        isConsultant() ||
+        (resource.data.userId == request.auth.uid)
+      );
+
+      allow create: if isSignedIn() && isValidId(consultationId) &&
+        isValidConsultation(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'waiting';
+
+      allow update: if isSignedIn() && isValidConsultation(incoming()) && (
+        isAdmin() ||
+        // User updating their own waiting consultation
+        (
+          existing().userId == request.auth.uid &&
+          existing().status == 'waiting' &&
+          incoming().userId == existing().userId &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'subject', 'message', 'stageId', 'stageName', 'preferredConsultantIds',
+            'preferredConsultantNames', 'consultationMode', 'userPhone', 'userLibraryCard', 'updatedAt'
+          ])
+        ) ||
+        // Consultant updating or answering or assigning
+        (
+          isConsultant() &&
+          incoming().userId == existing().userId &&
+          (
+            // Taking an assignment
+            (incoming().diff(existing()).affectedKeys().hasOnly(['consultantId', 'consultantName', 'status', 'updatedAt']) &&
+             incoming().status == 'assigned') ||
+            // Replying or updating status
+            (incoming().diff(existing()).affectedKeys().hasOnly(['response', 'status', 'consultantId', 'consultantName', 'updatedAt']))
+          )
+        )
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && existing().status == 'waiting');
+    }
+
+    // System Settings Collection (Google Sheets Webhook, etc.)
+    match /systemSettings/{settingId} {
+      allow get, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

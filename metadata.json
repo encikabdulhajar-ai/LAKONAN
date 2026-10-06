@@ -1,0 +1,8 @@
+{
+  "name": "LAKONAN PUSTAKA KEPRI",
+  "description": "Layanan Konsultasi Akademik dan Penelitian - Platform asistensi riset cerdas untuk siswa, mahasiswa, dosen, dan peneliti.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
